@@ -1,8 +1,11 @@
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
-  // Enforces NFR-4.2 Security Headers without breaking dev server internal chunk serving
+  // Enforces NFR-4.2 Security Headers in production without breaking dev server internal chunk serving
   async headers() {
+    if (process.env.NODE_ENV !== 'production') {
+      return [];
+    }
     return [
       {
         // Exclude Next.js internal static assets and chunks from header interception

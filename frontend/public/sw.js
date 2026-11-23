@@ -43,6 +43,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = new URL(event.request.url);
 
+  // CRITICAL: Never intercept Next.js internal static assets, chunks, or HMR in development
+  if (url.pathname.startsWith('/_next/') || url.pathname.includes('webpack')) {
+    return;
+  }
+
   // Cache-first for static icons and assets
   if (url.origin === location.origin && (url.pathname.startsWith('/icons/') || url.pathname.endsWith('.woff'))) {
     event.respondWith(

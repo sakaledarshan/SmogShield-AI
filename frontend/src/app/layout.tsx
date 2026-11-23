@@ -34,13 +34,25 @@ export default function RootLayout({
         <AppShell>{children}</AppShell>
         <Script id="pwa-service-worker" strategy="afterInteractive">
           {`
-            if ('serviceWorker' in navigator) {
-              window.addEventListener('load', function() {
-                navigator.serviceWorker.register('/sw.js').then(
-                  function(reg) { console.log('SmogShield SW active:', reg.scope); },
-                  function(err) { console.log('SW registration error:', err); }
-                );
-              });
+            if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+              if (location.hostname === 'localhost' || location.hostname === '127.0.0.1') {
+                // In local dev mode, automatically unregister any stale service workers and clear caches
+                navigator.serviceWorker.getRegistrations().then(function(regs) {
+                  for (let r of regs) { r.unregister(); }
+                });
+                if ('caches' in window) {
+                  caches.keys().then(function(names) {
+                    for (let n of names) { caches.delete(n); }
+                  });
+                }
+              } else {
+                window.addEventListener('load', function() {
+                  navigator.serviceWorker.register('/sw.js').then(
+                    function(reg) { console.log('SmogShield SW active:', reg.scope); },
+                    function(err) { console.log('SW registration error:', err); }
+                  );
+                });
+              }
             }
           `}
         </Script>
