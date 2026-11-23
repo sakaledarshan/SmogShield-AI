@@ -1,44 +1,13 @@
 import random
+import sqlite3
 from datetime import datetime
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from typing import List
+from app.db.session import get_db
 from app.models.schemas import SmogHotspotReport, SchoolRecessFlag, CleanAirSanctuary
+from app.core.security import get_current_user, AuthenticatedUser
 
 router = APIRouter()
-
-# In-memory mock database for demo and standalone operation
-REPORTS: List[SmogHotspotReport] = [
-    SmogHotspotReport(
-        report_id="rep-101",
-        reporter_name="Resident Coordinator S.",
-        fuzzed_lat=28.6180,
-        fuzzed_lng=77.2140,
-        hazard_type="waste_burning",
-        description="Open municipal leaf and plastics burning near sector boundary.",
-        status="verified",
-        created_at="2026-11-23 07:45"
-    ),
-    SmogHotspotReport(
-        report_id="rep-102",
-        reporter_name="Commuter Amit",
-        fuzzed_lat=28.6320,
-        fuzzed_lng=77.2280,
-        hazard_type="industrial_smoke",
-        description="Heavy black exhaust billowing from warehouse diesel generator.",
-        status="pending",
-        created_at="2026-11-23 08:30"
-    ),
-    SmogHotspotReport(
-        report_id="rep-103",
-        reporter_name="RWA Green Lead",
-        fuzzed_lat=28.5990,
-        fuzzed_lng=77.2010,
-        hazard_type="crop_burning",
-        description="Field stubble burning smoke plume drifting across expressway.",
-        status="verified",
-        created_at="2026-11-23 09:15"
-    )
-]
 
 RECESS_FLAGS: List[SchoolRecessFlag] = [
     SchoolRecessFlag(
@@ -132,42 +101,82 @@ CARPOOLS = [
 ]
 
 @router.get("/hotspots", response_model=List[SmogHotspotReport])
-async def list_hotspots():
-    """Returns community burning hotspots with privacy-fuzzed coordinates (~500m radius)."""
-    return REPORTS
+def list_hotspots(conn: sqlite3.Connection = Depends(get_db)):
+    """Returns persistent community burning hotspots from database with fuzzed coordinates (~500m)."""
+    c = conn.cursor()
+    c.execute("SELECT report_id, reporter_name, fuzzed_lat, fuzzed_lng, hazard_type, description, status, created_at FROM community_reports ORDER BY created_at DESC")
+    rows = c.fetchall()
+    return [
+        SmogHotspotReport(
+            report_id=r["report_id"],
+            reporter_name=r["reporter_name"] or "Community Citizen",
+            fuzzed_lat=r["fuzzed_lat"],
+            fuzzed_lng=r["fuzzed_lng"],
+            hazard_type=r["hazard_type"],
+            description=r["description"],
+            status=r["status"],
+            created_at=r["created_at"]
+        )
+        for r in rows
+    ]
 
 @router.post("/hotspots", response_model=SmogHotspotReport)
-async def report_hotspot(report: SmogHotspotReport):
+def report_hotspot(
+    report: SmogHotspotReport,
+    conn: sqlite3.Connection = Depends(get_db),
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
     """
-    Submits a user-reported smog hazard (waste burning, crop burning, diesel smoke).
+    Submits a user-reported smog hazard and persists to database.
+    Protected by OAuth 2.0 / JWT auth.
     Fuzzes geographic coordinates to ensure privacy per NFR-4.1.
     """
-    # Enforce minimum ~500m coordinate jitter for anonymity
     jitter_lat = (random.random() - 0.5) * 0.008
     jitter_lng = (random.random() - 0.5) * 0.008
-    fuzzed_lat = round(report.fuzzed_lat + jitter_lat, 5)
-    fuzzed_lng = round(report.fuzzed_lng + jitter_lng, 5)
-    
-    new_rep = SmogHotspotReport(
-        report_id=f"rep-{random.randint(104, 999)}",
+    f_lat = round(report.fuzzed_lat + jitter_lat, 5)
+    f_lng = round(report.fuzzed_lng + jitter_lng, 5)
+    rep_id = f"rep-{random.randint(104, 999)}"
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
+
+    c = conn.cursor()
+    c.execute("""
+        INSERT INTO community_reports (report_id, reporter_name, fuzzed_lat, fuzzed_lng, hazard_type, description, status, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        rep_id,
+        report.reporter_name or "Community Member",
+        f_lat,
+        f_lng,
+        report.hazard_type,
+        report.description,
+        "pending",
+        now_str
+    ))
+    conn.commit()
+
+    return SmogHotspotReport(
+        report_id=rep_id,
         reporter_name=report.reporter_name or "Community Member",
-        fuzzed_lat=fuzzed_lat,
-        fuzzed_lng=fuzzed_lng,
+        fuzzed_lat=f_lat,
+        fuzzed_lng=f_lng,
         hazard_type=report.hazard_type,
         description=report.description,
         status="pending",
-        created_at=datetime.now().strftime("%Y-%m-%d %H:%M")
+        created_at=now_str
     )
-    REPORTS.insert(0, new_rep)
-    return new_rep
 
 @router.get("/recess-flags", response_model=List[SchoolRecessFlag])
-async def list_recess_flags():
+def list_recess_flags():
     """Returns official school recess flag statuses for neighborhood coordinators."""
     return RECESS_FLAGS
 
 @router.post("/recess-flags/toggle")
-async def toggle_recess_flag(school_name: str, new_flag: str, coordinator_name: str):
+def toggle_recess_flag(
+    school_name: str,
+    new_flag: str,
+    coordinator_name: str,
+    current_user: AuthenticatedUser = Depends(get_current_user)
+):
     """Allows verified school coordinator to update air quality flag color."""
     for s in RECESS_FLAGS:
         if s.school_name == school_name:
@@ -178,11 +187,11 @@ async def toggle_recess_flag(school_name: str, new_flag: str, coordinator_name: 
     return {"status": "not_found"}
 
 @router.get("/sanctuaries", response_model=List[CleanAirSanctuary])
-async def list_clean_air_sanctuaries():
+def list_clean_air_sanctuaries():
     """Returns directory of verified public clean-air sanctuaries."""
     return SANCTUARIES
 
 @router.get("/carpools")
-async def list_carpool_board():
+def list_carpool_board():
     """Returns neighborhood carpool and walking bus coordination board."""
     return CARPOOLS

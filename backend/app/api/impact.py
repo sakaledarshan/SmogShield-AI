@@ -5,7 +5,7 @@ from app.engine.deterministic import calculate_action_swap_impact
 router = APIRouter()
 
 @router.post("/simulate", response_model=ImpactSimulationResponse)
-async def simulate_impact(req: ImpactSimulationRequest):
+def simulate_impact(req: ImpactSimulationRequest):
     """
     Calculates deterministic impact metrics for a potential user action swap.
     Formula: Inhalation PM2.5 = Breathing Rate * Pollutant Conc * Duration.
@@ -21,7 +21,7 @@ async def simulate_impact(req: ImpactSimulationRequest):
     return ImpactSimulationResponse(**res)
 
 @router.get("/ledger")
-async def get_cumulative_ledger():
+def get_cumulative_ledger():
     """
     Returns weekly cumulative ledger metrics: personal PM2.5 exposure avoided,
     household emissions reduced (kg CO2e & NOx), cigarette equivalence, and habit streak.

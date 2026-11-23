@@ -1,22 +1,19 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ShieldCheck, Map, Bot, Activity, Users } from "lucide-react";
 
-export type TabKey = "action" | "map" | "coach" | "impact" | "community";
+export const BottomNav: React.FC = () => {
+  const pathname = usePathname();
 
-interface BottomNavProps {
-  activeTab: TabKey;
-  onChangeTab: (tab: TabKey) => void;
-}
-
-export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChangeTab }) => {
   const tabs = [
-    { key: "action", label: "Today's Action", icon: ShieldCheck },
-    { key: "map", label: "Live Map", icon: Map },
-    { key: "coach", label: "AI Coach", icon: Bot },
-    { key: "impact", label: "Impact & Habits", icon: Activity },
-    { key: "community", label: "Community", icon: Users },
+    { href: "/", label: "Today's Action", icon: ShieldCheck },
+    { href: "/map", label: "Live Map", icon: Map },
+    { href: "/coach", label: "AI Coach", icon: Bot },
+    { href: "/impact", label: "Impact & Habits", icon: Activity },
+    { href: "/community", label: "Community", icon: Users },
   ];
 
   return (
@@ -24,11 +21,11 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChangeTab }) 
       <div className="max-w-lg mx-auto flex items-center justify-around px-2 py-1.5">
         {tabs.map((tab) => {
           const Icon = tab.icon;
-          const isActive = activeTab === tab.key;
+          const isActive = pathname === tab.href;
           return (
-            <button
-              key={tab.key}
-              onClick={() => onChangeTab(tab.key as TabKey)}
+            <Link
+              key={tab.href}
+              href={tab.href}
               className={`flex flex-col items-center justify-center flex-1 py-1 px-1 rounded-xl transition-all ${
                 isActive
                   ? "text-blue-400 scale-105 font-semibold"
@@ -43,7 +40,7 @@ export const BottomNav: React.FC<BottomNavProps> = ({ activeTab, onChangeTab }) 
                 <Icon className="w-5 h-5" />
               </div>
               <span className="text-[10px] mt-0.5 tracking-tight">{tab.label}</span>
-            </button>
+            </Link>
           );
         })}
       </div>

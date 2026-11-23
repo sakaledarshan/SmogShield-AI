@@ -6,7 +6,7 @@ from app.engine.deterministic import calculate_action_swap_impact
 router = APIRouter()
 
 @router.post("/daily", response_model=DailyRoutineResponse)
-async def generate_daily_routine(req: DailyRoutineRequest):
+def generate_daily_routine(req: DailyRoutineRequest):
     """
     Generates a structured, time-blocked personal smog defense routine
     tailored to the user's household profile (infants, seniors, asthma, budget, commute).

@@ -1,13 +1,13 @@
 """
 Gemini GenAI LLM Orchestrator for SmogShield AI Coach.
-Provides strict RAG-grounded responses with safety guardrails and deterministic impact figures.
-Falls back seamlessly to local rule-guided knowledge synthesis if API key is not supplied.
+Provides strict RAG-grounded responses using pgvector / semantic vector retrieval.
+Enforces safety guardrails and deterministic impact figures.
 """
 
 import os
-import json
 from typing import Dict, Any, List, Optional
-from app.rag.guidelines import inspect_query_for_guardrails, get_relevant_guidelines, DISCLAIMER_TEXT
+from app.rag.guidelines import inspect_query_for_guardrails, DISCLAIMER_TEXT
+from app.rag.vector_store import search_rag_guidelines
 from app.models.schemas import HouseholdProfile
 
 class GeminiCoachService:
@@ -23,11 +23,11 @@ class GeminiCoachService:
         """
         Processes user query through:
         1. Guardrail inspection (blocks ozone, chemical sprays, etc.)
-        2. RAG guidelines retrieval (WHO/EPA/ASHRAE)
+        2. Vector RAG guidelines retrieval from database (WHO/EPA/ASHRAE)
         3. Deterministic context augmentation
         4. Structured generation
         """
-        # Step 1: Safety Guardrails
+        # Step 1: Safety Guardrails (NFR-3.2)
         guardrail_warning = inspect_query_for_guardrails(query)
         if guardrail_warning:
             return {
@@ -43,15 +43,12 @@ class GeminiCoachService:
                 "safety_disclaimer": DISCLAIMER_TEXT
             }
 
-        # Step 2: RAG Retrieval
-        rag_docs = get_relevant_guidelines(query)
-        framework_names = [d["title"] for d in rag_docs]
+        # Step 2: Vector RAG Retrieval from Database
+        rag_docs = search_rag_guidelines(query, top_k=2)
+        framework_names = [f"{d['title']} ({d['source']})" for d in rag_docs] if rag_docs else ["WHO Global Air Quality Guidelines", "EPA Residential IAQ"]
 
         # Context features
         budget = profile.budget_tier if profile else "low"
-        has_infant = profile.has_infants if profile else True
-        has_asthma = profile.has_respiratory_conditions if profile else False
-        has_hepa = profile.has_hepa_filter if profile else False
 
         # Step 3 & 4: Structured response synthesis
         q_lower = query.lower()

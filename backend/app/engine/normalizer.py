@@ -4,6 +4,8 @@ Unifies real-time and forecasted air quality data from:
 - Google Air Quality API (500m x 500m resolution, 96-hour hourly forecasts, pollutant breakdowns)
 - OpenAQ & WAQI fallback stations
 - Open-Meteo atmospheric dispersion & thermal inversion layer models
+
+Backed by Redis caching with a 15-minute TTL to prevent API quota burn.
 """
 
 import math
@@ -13,17 +15,7 @@ from app.models.schemas import (
     Location, PollutantValue, SafeVentilationWindow,
     InversionAlert, AQICurrentResponse, HourlyForecastItem, AQIForecastResponse
 )
-
-# Reference city coordinates (Delhi / NCR smog corridor as prime benchmark, configurable)
-DEFAULT_METRICS = {
-    "base_aqi": 285,
-    "pm25": 235.4,
-    "pm10": 340.1,
-    "no2": 62.0,
-    "o3": 28.5,
-    "so2": 18.2,
-    "co": 1.9,
-}
+from app.core.cache import cache
 
 def aqi_category(aqi: int) -> Tuple[str, str, str]:
     """Returns (Category, ColorHex, AccessibilityPattern)"""
@@ -43,9 +35,9 @@ def aqi_category(aqi: int) -> Tuple[str, str, str]:
 def generate_hourly_forecast(base_lat: float, base_lng: float) -> List[HourlyForecastItem]:
     """
     Generates 96-hour hourly forecast timeline simulating typical severe winter smog diurnal cycles:
-    - Night / Early Morning (00:00 - 09:00): Nocturnal radiative cooling traps pollutants under a low boundary layer (<150m), PM2.5 peaks (300-420 ug/m3).
+    - Night / Early Morning (22:00 - 08:00): Nocturnal radiative cooling traps pollutants under a low boundary layer (<150m), PM2.5 peaks.
     - Midday / Early Afternoon (12:00 - 15:00): Solar radiation breaks inversion, boundary layer expands (>600m), wind picks up, PM2.5 drops to safe window.
-    - Evening (18:00 - 23:00): Inversion re-forms, rush hour vehicle exhaust spikes emissions again.
+    - Evening (18:00 - 22:00): Inversion re-forms, rush hour vehicle exhaust spikes emissions again.
     """
     now = datetime.now()
     forecast: List[HourlyForecastItem] = []
@@ -105,7 +97,6 @@ def calculate_daily_safe_ventilation_window(forecast: List[HourlyForecastItem]) 
     start_item = next_24h[best_start_idx]
     end_item = next_24h[min(best_start_idx + 2, len(next_24h) - 1)]
     
-    # Safe window description
     advisory = (
         f"Safe 2-Hour Aeration Window: {start_item.time[-5:]} to {end_item.time[-5:]}. "
         f"Atmospheric boundary layer height reaches maximum solar expansion with active thermal mixing. "
@@ -124,7 +115,7 @@ def calculate_daily_safe_ventilation_window(forecast: List[HourlyForecastItem]) 
 def detect_thermal_inversion(forecast: List[HourlyForecastItem]) -> InversionAlert:
     """Detects whether low-altitude thermal inversion is currently trapping smog."""
     upcoming_night = [f for f in forecast[:14] if f.inversion_trapped]
-    if len(upcoming_night) >= 4:
+    if len(upcoming_night) >= 2:
         return InversionAlert(
             detected=True,
             severity="severe",
@@ -141,14 +132,26 @@ def detect_thermal_inversion(forecast: List[HourlyForecastItem]) -> InversionAle
     )
 
 def get_normalized_aqi_payload(lat: float, lng: float) -> AQICurrentResponse:
-    """Constructs canonical AQI current payload conforming to PRD specifications."""
+    """
+    Constructs canonical AQI current payload conforming to PRD specifications.
+    Uses Redis cache with a 15-minute TTL keyed by spatial 500m grid coordinate.
+    """
+    # 500m spatial grid rounding (~0.005 degrees)
+    grid_lat = round(lat, 3)
+    grid_lng = round(lng, 3)
+    cache_key = f"aqi_snapshot:{grid_lat}:{grid_lng}"
+
+    cached = cache.get(cache_key)
+    if cached:
+        return AQICurrentResponse(**cached)
+
     forecast = generate_hourly_forecast(lat, lng)
     current = forecast[0]
     category_name, _, _ = aqi_category(current.aqi)
     safe_window = calculate_daily_safe_ventilation_window(forecast)
     inversion = detect_thermal_inversion(forecast)
     
-    return AQICurrentResponse(
+    payload = AQICurrentResponse(
         location=Location(lat=lat, lng=lng, city_name="Downtown Metro Corridor"),
         aqi=current.aqi,
         category=category_name,
@@ -166,3 +169,7 @@ def get_normalized_aqi_payload(lat: float, lng: float) -> AQICurrentResponse:
         cached_at=datetime.utcnow().isoformat() + "Z",
         source_api="Google Air Quality API (500m Grid Canonical Adapter)"
     )
+
+    # Store in Redis cache with 15-min TTL
+    cache.set(cache_key, payload.dict(), ttl_seconds=15 * 60)
+    return payload

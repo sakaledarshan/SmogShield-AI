@@ -5,7 +5,7 @@ from app.services.gemini_service import gemini_coach
 router = APIRouter()
 
 @router.post("/coach", response_model=ChatCoachResponse)
-async def chat_with_coach(req: ChatCoachRequest):
+def chat_with_coach(req: ChatCoachRequest):
     """
     Conversational GenAI Coach grounded in WHO, EPA, and ASHRAE frameworks.
     Enforces automatic safety guardrails against dangerous DIY hacks.

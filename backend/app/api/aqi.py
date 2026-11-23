@@ -8,7 +8,7 @@ from app.engine.normalizer import (
 router = APIRouter()
 
 @router.get("/current", response_model=AQICurrentResponse)
-async def get_current_aqi(
+def get_current_aqi(
     lat: float = Query(28.6139, description="Latitude"),
     lng: float = Query(77.2090, description="Longitude")
 ):
@@ -19,7 +19,7 @@ async def get_current_aqi(
     return get_normalized_aqi_payload(lat, lng)
 
 @router.get("/forecast", response_model=AQIForecastResponse)
-async def get_forecast(
+def get_forecast(
     lat: float = Query(28.6139, description="Latitude"),
     lng: float = Query(77.2090, description="Longitude")
 ):
