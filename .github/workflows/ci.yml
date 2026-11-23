@@ -24,6 +24,8 @@ jobs:
           pip install -r requirements.txt
 
       - name: Run Deterministic Engine & RAG Tests
+        env:
+          PYTHONPATH: .
         run: |
           cd backend
           python tests/test_engine.py

@@ -13,8 +13,10 @@ from app.engine.normalizer import (
 )
 from app.services.gemini_service import gemini_coach
 from app.models.schemas import HouseholdProfile
+from app.db.init_db import init_database
 
 def test_engine():
+    init_database()
     print("=== 1. TESTING DETERMINISTIC PRE-CALCULATION ENGINE ===")
     carpool = calculate_action_swap_impact("carpool_swap", distance_km=15.0)
     print(f"✓ Carpool 15km: Avoided {carpool['pm25_exposure_avoided_ug']} µg PM2.5")

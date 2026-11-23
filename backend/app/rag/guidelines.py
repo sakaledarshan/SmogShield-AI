@@ -7,7 +7,7 @@ Populated with verified indoor air quality guidelines from:
 - CDC & Clean Air Crew DIY Air Purifier Standards (Corsi-Rosenthal Box)
 """
 
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 VERIFIED_GUIDELINES = [
     {

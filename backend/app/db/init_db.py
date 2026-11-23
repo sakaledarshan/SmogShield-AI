@@ -5,6 +5,7 @@ Seeds indexed WHO, EPA, and ASHRAE standards with semantic embedding vectors int
 
 import json
 import math
+from typing import List
 from app.db.session import db_manager
 from app.rag.guidelines import VERIFIED_GUIDELINES
 
